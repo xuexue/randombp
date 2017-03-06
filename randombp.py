@@ -34,21 +34,25 @@ class BackPropNet(object):
         h = tf.nn.sigmoid(tf.matmul(self.x, w1) + d1)
         w2 = wi("bp_w2", [num_hidden, 10])
         d2 = bi("bp_d2", [10])
-        ypred = tf.nn.softmax(tf.matmul(h, w2) + d2)
-        # loss
-        self.cross_entropy = tf.reduce_mean(
-                -tf.reduce_sum(self.y * tf.log(ypred), reduction_indices=[1]))
+        self.ypred = tf.nn.softmax(tf.matmul(h, w2) + d2)
+        # costs
+        self.define_costs()
         # training
         self.train_step = tf.train.GradientDescentOptimizer(self.lr) \
                 .minimize(self.cross_entropy)
-        # acurracy
-        correct_prediction = tf.equal(tf.argmax(ypred,1), tf.argmax(self.y,1))
-        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
     def define_placeholders(self):
         self.x = tf.placeholder(tf.float32, [None, 784])
         self.y = tf.placeholder(tf.float32, [None, 10])
         self.lr = tf.placeholder(tf.float32)
+
+    def define_costs(self):
+        # cross-entropy
+        self.cross_entropy = tf.reduce_mean(
+                -tf.reduce_sum(self.y * tf.log(self.ypred), reduction_indices=[1]))
+        # acurracy
+        correct_prediction = tf.equal(tf.argmax(self.ypred,1), tf.argmax(self.y,1))
+        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
     def train(self, sess, data, lr=0.5, iter=100):
         for i in range(iter):
@@ -71,7 +75,7 @@ class RandomFeedbackNet(BackPropNet):
         self.define_placeholders()
         # define network
         w1 = wi("rf_w1", [784, num_hidden]) # forward weights
-        b1 = wi("rf_b1", [num_hidden, 784]) # backwards weights
+        #b1 = wi("rf_b1", [num_hidden, 784]) # backwards weights (unused)
         d1 = bi("rf_d1", [num_hidden])
         z1 = tf.matmul(self.x, w1) + d1
         h = tf.nn.sigmoid(z1)
@@ -80,12 +84,11 @@ class RandomFeedbackNet(BackPropNet):
         b2 = wi("rf_b2", [10, num_hidden]) # backwards weights
         d2 = bi("rf_d2", [10])
         z2 = tf.matmul(h, w2) + d2
-        ypred = tf.nn.softmax(z2)
-        # loss
-        self.cross_entropy = tf.reduce_mean(
-                -tf.reduce_sum(self.y * tf.log(ypred), reduction_indices=[1]))
+        self.ypred = tf.nn.softmax(z2)
+        # costs
+        self.define_costs()
         # training: derivative w.r.t. activations
-        ypred_grad = tf.gradients(self.cross_entropy, ypred)[0]
+        ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
         z2_grad = tf.gradients(self.cross_entropy, z2)[0] # with softmax inclued
         h_grad = tf.matmul(z2_grad, b2)
         z1_grad = tf.mul(tf.gradients(h, z1)[0], h_grad)
@@ -107,9 +110,6 @@ class RandomFeedbackNet(BackPropNet):
             tf.assign(d2, d2 - self.lr * self.d2_grad),
             tf.assign(d1, d1 - self.lr * self.d1_grad),
         ]
-        # acurracy
-        correct_prediction = tf.equal(tf.argmax(ypred,1), tf.argmax(self.y,1))
-        self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 
 if __name__ == '__main__':

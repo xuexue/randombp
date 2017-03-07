@@ -21,7 +21,7 @@ def wi(name, shape, dtype=tf.float32):
         shape=shape,
         dtype=dtype,
         initializer=tf.truncated_normal_initializer(
-          mean=0.0, stddev=0.01, dtype=dtype))
+            mean=0.0, stddev=0.2, dtype=dtype))
 
 
 class BackPropNet(object):
@@ -98,15 +98,15 @@ class RandomFeedbackNet(BackPropNet):
         ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
         z2_grad = tf.gradients(self.cross_entropy, z2)[0] # with softmax inclued
         h_grad = tf.matmul(z2_grad, b2)
-        z1_grad = tf.mul(tf.gradients(h, z1)[0], h_grad)
+        z1_grad = tf.multiply(tf.gradients(h, z1)[0], h_grad)
         # training: derivative w.r.t. weights
         self.w2_grad = tf.reduce_sum(
-                tf.mul(tf.expand_dims(h, 2),
+                tf.multiply(tf.expand_dims(h, 2),
                        tf.expand_dims(z2_grad, 1)), # order?
                 [0])
         self.d2_grad = tf.reduce_sum(z2_grad, [0])
         self.w1_grad = tf.reduce_sum(
-                tf.mul(tf.expand_dims(self.x, 2),
+                tf.multiply(tf.expand_dims(self.x, 2),
                        tf.expand_dims(z1_grad, 1)), # order?
                 [0])
         self.d1_grad = tf.reduce_sum(z1_grad, [0])
@@ -146,23 +146,23 @@ class RandomFeedback4Layer(RandomFeedbackNet):
         ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
         z3_grad = tf.gradients(self.cross_entropy, z3)[0] # softmax
         h2_grad = tf.matmul(z3_grad, b3)
-        z2_grad = tf.mul(tf.gradients(h2, z2)[0], h2_grad) #sigmoid
+        z2_grad = tf.multiply(tf.gradients(h2, z2)[0], h2_grad) #sigmoid
         h1_grad = tf.matmul(z2_grad, b2)
-        z1_grad = tf.mul(tf.gradients(h1, z1)[0], h1_grad) #sigmoid
+        z1_grad = tf.multiply(tf.gradients(h1, z1)[0], h1_grad) #sigmoid
 
         # training: derivative w.r.t. weights
         self.w3_grad = tf.reduce_sum(
-                tf.mul(tf.expand_dims(h2, 2),
+                tf.multiply(tf.expand_dims(h2, 2),
                        tf.expand_dims(z3_grad, 1)),
                 [0])
         self.d3_grad = tf.reduce_sum(z3_grad, [0])
         self.w2_grad = tf.reduce_sum(
-                tf.mul(tf.expand_dims(h1, 2),
+                tf.multiply(tf.expand_dims(h1, 2),
                        tf.expand_dims(z2_grad, 1)),
                 [0])
         self.d2_grad = tf.reduce_sum(z2_grad, [0])
         self.w1_grad = tf.reduce_sum(
-                tf.mul(tf.expand_dims(self.x, 2),
+                tf.multiply(tf.expand_dims(self.x, 2),
                        tf.expand_dims(z1_grad, 1)),
                 [0])
         self.d1_grad = tf.reduce_sum(z1_grad, [0])
@@ -192,14 +192,15 @@ if __name__ == '__main__':
 
     bpn = BackPropNet()
     rfn = RandomFeedbackNet()
-    rfn4 = RandomFeedback4Layer([100,100])
+    rfn4 = RandomFeedback4Layer([200,100])
     with tf.Session() as sess:
         sess.run(tf.initialize_all_variables())
-        #print 'Training normal neural net with backprop:'
-        #bpn.train(sess, mnist.train)
 
-        #print 'Training random feedback neural net:'
-        #rfn.train(sess, mnist.train, lr=0.5, decay=0.00001, iter=30)
+        print 'Training normal neural net with backprop:'
+        bpn.train(sess, mnist.train, iter=30)
+
+        print 'Training random feedback neural net:'
+        rfn.train(sess, mnist.train, lr=0.5, decay=0.00001, iter=50)
 
         print 'Training 4-layer random feedback net:'
-        rfn4.train(sess, mnist.train, lr=0.005, decay=0.00001, iter=30)
+        rfn4.train(sess, mnist.train, lr=0.5, decay=0.0001, iter=50)

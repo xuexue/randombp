@@ -66,16 +66,30 @@ class BackPropNet(object):
         correct_prediction = tf.equal(tf.argmax(self.ypred,1), tf.argmax(self.y,1))
         self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-    def train(self, sess, data, lr=0.5, decay=0.0, iter=50):
-        for i in range(iter):
-            images, labels = data.next_batch(1000)
-            _, acc = sess.run([self.train_step, self.accuracy],
-                    feed_dict={self.x: images,
-                               self.y: labels,
-                               self.lr: lr,
-                               self.decay: decay
-                               })
-            print 'Iter %d, Acc: %.1f %%' % (i, acc*100)
+    def train(self, sess, mnist, lr=0.5, decay=0.0, epochs=50, verbose=False):
+        testaccs = []
+        trainaccs = []
+        for e in range(epochs):
+            for b in range(60):
+                images, labels = mnist.train.next_batch(1000)
+                sess.run(self.train_step,
+                        feed_dict={self.x: images,
+                                   self.y: labels,
+                                   self.lr: lr,
+                                   self.decay: decay
+                                   })
+            train_acc = sess.run(self.accuracy,
+                    feed_dict={self.x: mnist.train.images,
+                               self.y: mnist.train.labels })
+            acc = sess.run(self.accuracy,
+                    feed_dict={self.x: mnist.test.images,
+                               self.y: mnist.test.labels })
+            trainaccs.append(train_acc)
+            testaccs.append(acc)
+            if verbose:
+                print 'Epoch %d, TrainAcc: %.1f %%, TestAcc: %.1f %%' %\
+                        (e, train_acc*100, acc*100)
+        return trainaccs, testaccs
 
 class RandomFeedbackNet(BackPropNet):
     """Three-layer netowrk based on
@@ -142,8 +156,8 @@ class RandomFeedback4Layer(RandomFeedbackNet):
         # define backward weights
         with tf.variable_scope(self.scope):
             n1, n2 = num_hidden
-            b2 = wi("fa_b2", [n2, n1]) # backwards weights
-            b3 = wi("fa_b3", [10, n2]) # backwards weights
+            b2 = wi("b2", [n2, n1]) # backwards weights
+            b3 = wi("b3", [10, n2]) # backwards weights
         # training: derivative w.r.t. activations
         ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
         z3_grad = tf.gradients(self.cross_entropy, self.z3)[0] # softmax
@@ -188,8 +202,8 @@ class DirectFeedbackNet(RandomFeedback4Layer):
     def define_train_step(self, num_hidden):
         with tf.variable_scope(self.scope):
             n1, n2 = num_hidden
-            b2 = wi("df_b2", [10, n1]) # <--- SUBTLE DIFFERENCE
-            b3 = wi("df_b3", [10, n2])
+            b2 = wi("b2", [10, n1]) # <--- SUBTLE DIFFERENCE
+            b3 = wi("b3", [10, n2])
         # training: derivative w.r.t. activations
         ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
         z3_grad = tf.gradients(self.cross_entropy, self.z3)[0]
@@ -224,6 +238,7 @@ class DirectFeedbackNet(RandomFeedback4Layer):
             tf.assign(self.d1, self.d1 - self.alpha * self.d1_grad - self.decay),
         ]
 
+
 if __name__ == '__main__':
     from tensorflow.examples.tutorials.mnist import input_data
     mnist = input_data.read_data_sets("mnist/", one_hot=True)
@@ -236,13 +251,13 @@ if __name__ == '__main__':
         sess.run(tf.initialize_all_variables())
 
         print 'Training normal neural net with backprop:'
-        bpn.train(sess, mnist.train, iter=100)
+        bpn.train(sess, mnist, epochs=100)
 
         print 'Training random feedback neural net:'
-        rfn.train(sess, mnist.train, lr=0.5, decay=0.00001, iter=100)
+        rfn.train(sess, mnist, lr=0.5, decay=0.00001, epochs=100)
 
         print 'Training 4-layer random feedback net:'
-        rfn4.train(sess, mnist.train, lr=0.5, decay=0.0001, iter=100)
+        rfn4.train(sess, mnist, lr=0.5, decay=0.0001, epochs=100)
 
         print 'Training 4-layer direct feedback net:'
-        dfb4.train(sess, mnist.train, lr=0.5, decay=0.0001, iter=100)
+        dfb4.train(sess, mnist, lr=0.5, decay=0.0001, epochs=100)

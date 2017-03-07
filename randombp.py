@@ -26,18 +26,27 @@ def wi(name, shape, dtype=tf.float32):
 
 class BackPropNet(object):
     """Normal 3-layer network for comparison."""
+    scope = 'bp'
+
     def __init__(self, num_hidden=100):
         self.define_placeholders()
-        # define network
-        w1 = wi("bp_w1", [784, num_hidden])
-        d1 = bi("bp_d1", [num_hidden])
-        h = tf.nn.sigmoid(tf.matmul(self.x, w1) + d1)
-        w2 = wi("bp_w2", [num_hidden, 10])
-        d2 = bi("bp_d2", [10])
-        self.ypred = tf.nn.softmax(tf.matmul(h, w2) + d2)
-        # costs
+        self.define_network(num_hidden)
         self.define_costs()
-        # training
+        self.define_train_step(num_hidden)
+
+    def define_network(self, num_hidden):
+        with tf.variable_scope(self.scope):
+            self.w1 = wi("w1", [784, num_hidden]) # forward weights
+            self.d1 = bi("d1", [num_hidden])
+            self.z1 = tf.matmul(self.x, self.w1) + self.d1
+            self.h = tf.nn.sigmoid(self.z1)
+
+            self.w2 = wi("w2", [num_hidden, 10]) # forward weights
+            self.d2 = bi("d2", [10])
+            self.z2 = tf.matmul(self.h, self.w2) + self.d2
+            self.ypred = tf.nn.softmax(self.z2)
+
+    def define_train_step(self, num_hidden):
         self.train_step = tf.train.GradientDescentOptimizer(self.lr) \
                 .minimize(self.cross_entropy)
 
@@ -78,30 +87,20 @@ class RandomFeedbackNet(BackPropNet):
         * biases are initialized to zero (instead of uniform)
         * did not perform any hyperparamter tuning
     """
-    def __init__(self, num_hidden=100):
-        self.define_placeholders()
-        # define network
-        w1 = wi("rf_w1", [784, num_hidden]) # forward weights
-        #b1 = wi("rf_b1", [num_hidden, 784]) # backwards weights (unused)
-        d1 = bi("rf_d1", [num_hidden])
-        z1 = tf.matmul(self.x, w1) + d1
-        h = tf.nn.sigmoid(z1)
+    scope = 'rfn'
 
-        w2 = wi("rf_w2", [num_hidden, 10]) # forward weights
-        b2 = wi("rf_b2", [10, num_hidden]) # backwards weights
-        d2 = bi("rf_d2", [10])
-        z2 = tf.matmul(h, w2) + d2
-        self.ypred = tf.nn.softmax(z2)
-        # costs
-        self.define_costs()
+    def define_train_step(self, num_hidden):
+        # define backward weights
+        with tf.variable_scope(self.scope):
+            b2 = wi("b2", [10, num_hidden]) # backwards weights
         # training: derivative w.r.t. activations
         ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
-        z2_grad = tf.gradients(self.cross_entropy, z2)[0] # with softmax inclued
+        z2_grad = tf.gradients(self.cross_entropy, self.z2)[0] # with softmax inclued
         h_grad = tf.matmul(z2_grad, b2)
-        z1_grad = tf.multiply(tf.gradients(h, z1)[0], h_grad)
+        z1_grad = tf.multiply(tf.gradients(self.h, self.z1)[0], h_grad)
         # training: derivative w.r.t. weights
         self.w2_grad = tf.reduce_sum(
-                tf.multiply(tf.expand_dims(h, 2),
+                tf.multiply(tf.expand_dims(self.h, 2),
                        tf.expand_dims(z2_grad, 1)), # order?
                 [0])
         self.d2_grad = tf.reduce_sum(z2_grad, [0])
@@ -112,52 +111,54 @@ class RandomFeedbackNet(BackPropNet):
         self.d1_grad = tf.reduce_sum(z1_grad, [0])
         # training: assign weights
         self.train_step= [
-            tf.assign(w2, w2 - self.alpha * self.w2_grad - self.decay),
-            tf.assign(w1, w1 - self.alpha * self.w1_grad - self.decay),
-            tf.assign(d2, d2 - self.alpha * self.d2_grad - self.decay),
-            tf.assign(d1, d1 - self.alpha * self.d1_grad - self.decay),
+            tf.assign(self.w2, self.w2 - self.alpha * self.w2_grad - self.decay),
+            tf.assign(self.w1, self.w1 - self.alpha * self.w1_grad - self.decay),
+            tf.assign(self.d2, self.d2 - self.alpha * self.d2_grad - self.decay),
+            tf.assign(self.d1, self.d1 - self.alpha * self.d1_grad - self.decay),
         ]
 
 class RandomFeedback4Layer(RandomFeedbackNet):
     """A 4-layer network, as above
     """
-    def __init__(self, num_hidden=[300, 100]):
-        self.define_placeholders()
-        # define network:
-        n1, n2 = num_hidden
-        w1 = wi("fa_w1", [784, n1]) # forward weights
-        d1 = bi("fa_d1", [n1])
-        z1 = tf.matmul(self.x, w1) + d1
-        h1 = tf.nn.sigmoid(z1)
-        w2 = wi("fa_w2", [n1, n2]) # forward weights
-        b2 = wi("fa_b2", [n2, n1]) # backwards weights
-        d2 = bi("fa_d2", [n2])
-        z2 = tf.matmul(h1, w2) + d2
-        h2 = tf.nn.sigmoid(z2)
-        w3 = wi("fa_w3", [n2, 10]) # forward weights
-        b3 = wi("fa_b3", [10, n2]) # backwards weights
-        d3 = bi("fa_d3", [10])
-        z3 = tf.matmul(h2, w3) + d3
-        self.ypred = tf.nn.softmax(z3)
-        # costs
-        self.define_costs()
+    scope = 'rf4'
 
+    def define_network(self, num_hidden):
+        with tf.variable_scope(self.scope):
+            n1, n2 = num_hidden
+            self.w1 = wi("w1", [784, n1]) # forward weights
+            self.d1 = bi("d1", [n1])
+            self.z1 = tf.matmul(self.x, self.w1) + self.d1
+            self.h1 = tf.nn.sigmoid(self.z1)
+            self.w2 = wi("w2", [n1, n2]) # forward weights
+            self.d2 = bi("d2", [n2])
+            self.z2 = tf.matmul(self.h1, self.w2) + self.d2
+            self.h2 = tf.nn.sigmoid(self.z2)
+            self.w3 = wi("w3", [n2, 10]) # forward weights
+            self.d3 = bi("d3", [10])
+            self.z3 = tf.matmul(self.h2, self.w3) + self.d3
+            self.ypred = tf.nn.softmax(self.z3)
+
+    def define_train_step(self, num_hidden):
+        # define backward weights
+        with tf.variable_scope(self.scope):
+            n1, n2 = num_hidden
+            b2 = wi("fa_b2", [n2, n1]) # backwards weights
+            b3 = wi("fa_b3", [10, n2]) # backwards weights
         # training: derivative w.r.t. activations
         ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
-        z3_grad = tf.gradients(self.cross_entropy, z3)[0] # softmax
+        z3_grad = tf.gradients(self.cross_entropy, self.z3)[0] # softmax
         h2_grad = tf.matmul(z3_grad, b3)
-        z2_grad = tf.multiply(tf.gradients(h2, z2)[0], h2_grad) #sigmoid
+        z2_grad = tf.multiply(tf.gradients(self.h2, self.z2)[0], h2_grad) #sigmoid
         h1_grad = tf.matmul(z2_grad, b2)
-        z1_grad = tf.multiply(tf.gradients(h1, z1)[0], h1_grad) #sigmoid
-
+        z1_grad = tf.multiply(tf.gradients(self.h1, self.z1)[0], h1_grad) #sigmoid
         # training: derivative w.r.t. weights
         self.w3_grad = tf.reduce_sum(
-                tf.multiply(tf.expand_dims(h2, 2),
+                tf.multiply(tf.expand_dims(self.h2, 2),
                        tf.expand_dims(z3_grad, 1)),
                 [0])
         self.d3_grad = tf.reduce_sum(z3_grad, [0])
         self.w2_grad = tf.reduce_sum(
-                tf.multiply(tf.expand_dims(h1, 2),
+                tf.multiply(tf.expand_dims(self.h1, 2),
                        tf.expand_dims(z2_grad, 1)),
                 [0])
         self.d2_grad = tf.reduce_sum(z2_grad, [0])
@@ -168,57 +169,43 @@ class RandomFeedback4Layer(RandomFeedbackNet):
         self.d1_grad = tf.reduce_sum(z1_grad, [0])
         # training: assign weights
         self.train_step= [
-            tf.assign(w3, w3 - self.alpha * self.w3_grad - self.decay),
-            tf.assign(w2, w2 - self.alpha * self.w2_grad - self.decay),
-            tf.assign(w1, w1 - self.alpha * self.w1_grad - self.decay),
-            tf.assign(d3, d3 - self.alpha * self.d3_grad - self.decay),
-            tf.assign(d2, d2 - self.alpha * self.d2_grad - self.decay),
-            tf.assign(d1, d1 - self.alpha * self.d1_grad - self.decay),
+            tf.assign(self.w3, self.w3 - self.alpha * self.w3_grad - self.decay),
+            tf.assign(self.w2, self.w2 - self.alpha * self.w2_grad - self.decay),
+            tf.assign(self.w1, self.w1 - self.alpha * self.w1_grad - self.decay),
+            tf.assign(self.d3, self.d3 - self.alpha * self.d3_grad - self.decay),
+            tf.assign(self.d2, self.d2 - self.alpha * self.d2_grad - self.decay),
+            tf.assign(self.d1, self.d1 - self.alpha * self.d1_grad - self.decay),
         ]
 
-class DirectFeedbackNet(BackPropNet):
+class DirectFeedbackNet(RandomFeedback4Layer):
     """Based on
         'Direct Feedback Alignment Provides Learning in
         Deep Neural Networks'
     There are going to be some differences. I'll know later.
     """
-    def __init__(self, num_hidden=[300, 100]):
-        self.define_placeholders()
-        # define network:
-        n1, n2 = num_hidden
-        w1 = wi("df_w1", [784, n1]) # forward weights
-        d1 = bi("df_d1", [n1])
-        z1 = tf.matmul(self.x, w1) + d1
-        h1 = tf.nn.sigmoid(z1)
-        w2 = wi("df_w2", [n1, n2]) # forward weights
-        b2 = wi("df_b2", [10, n1]) # backwards weights <--- SUBTLE DIFFERENCE
-        d2 = bi("df_d2", [n2])
-        z2 = tf.matmul(h1, w2) + d2
-        h2 = tf.nn.sigmoid(z2)
-        w3 = wi("df_w3", [n2, 10]) # forward weights
-        b3 = wi("df_b3", [10, n2]) # backwards weights
-        d3 = bi("df_d3", [10])
-        z3 = tf.matmul(h2, w3) + d3
-        self.ypred = tf.nn.softmax(z3)
-        # costs
-        self.define_costs()
+    scope = 'dfn'
 
+    def define_train_step(self, num_hidden):
+        with tf.variable_scope(self.scope):
+            n1, n2 = num_hidden
+            b2 = wi("df_b2", [10, n1]) # <--- SUBTLE DIFFERENCE
+            b3 = wi("df_b3", [10, n2])
         # training: derivative w.r.t. activations
         ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
-        z3_grad = tf.gradients(self.cross_entropy, z3)[0] # softmax
+        z3_grad = tf.gradients(self.cross_entropy, self.z3)[0]
         h2_grad = tf.matmul(z3_grad, b3)
-        z2_grad = tf.multiply(tf.gradients(h2, z2)[0], h2_grad) #sigmoid
+        z2_grad = tf.multiply(tf.gradients(self.h2, self.z2)[0], h2_grad)
         h1_grad = tf.matmul(z3_grad, b2) # <--- SUBTLE DIFFERENCE HERE
-        z1_grad = tf.multiply(tf.gradients(h1, z1)[0], h1_grad) #sigmoid
+        z1_grad = tf.multiply(tf.gradients(self.h1, self.z1)[0], h1_grad)
 
         # training: derivative w.r.t. weights
         self.w3_grad = tf.reduce_sum(
-                tf.multiply(tf.expand_dims(h2, 2),
+                tf.multiply(tf.expand_dims(self.h2, 2),
                        tf.expand_dims(z3_grad, 1)),
                 [0])
         self.d3_grad = tf.reduce_sum(z3_grad, [0])
         self.w2_grad = tf.reduce_sum(
-                tf.multiply(tf.expand_dims(h1, 2),
+                tf.multiply(tf.expand_dims(self.h1, 2),
                        tf.expand_dims(z2_grad, 1)),
                 [0])
         self.d2_grad = tf.reduce_sum(z2_grad, [0])
@@ -229,12 +216,12 @@ class DirectFeedbackNet(BackPropNet):
         self.d1_grad = tf.reduce_sum(z1_grad, [0])
         # training: assign weights
         self.train_step= [
-            tf.assign(w3, w3 - self.alpha * self.w3_grad - self.decay),
-            tf.assign(w2, w2 - self.alpha * self.w2_grad - self.decay),
-            tf.assign(w1, w1 - self.alpha * self.w1_grad - self.decay),
-            tf.assign(d3, d3 - self.alpha * self.d3_grad - self.decay),
-            tf.assign(d2, d2 - self.alpha * self.d2_grad - self.decay),
-            tf.assign(d1, d1 - self.alpha * self.d1_grad - self.decay),
+            tf.assign(self.w3, self.w3 - self.alpha * self.w3_grad - self.decay),
+            tf.assign(self.w2, self.w2 - self.alpha * self.w2_grad - self.decay),
+            tf.assign(self.w1, self.w1 - self.alpha * self.w1_grad - self.decay),
+            tf.assign(self.d3, self.d3 - self.alpha * self.d3_grad - self.decay),
+            tf.assign(self.d2, self.d2 - self.alpha * self.d2_grad - self.decay),
+            tf.assign(self.d1, self.d1 - self.alpha * self.d1_grad - self.decay),
         ]
 
 if __name__ == '__main__':
@@ -248,16 +235,14 @@ if __name__ == '__main__':
     with tf.Session() as sess:
         sess.run(tf.initialize_all_variables())
 
-        '''
         print 'Training normal neural net with backprop:'
-        bpn.train(sess, mnist.train, iter=1000)
+        bpn.train(sess, mnist.train, iter=100)
 
         print 'Training random feedback neural net:'
-        rfn.train(sess, mnist.train, lr=0.5, decay=0.00001, iter=1000)
+        rfn.train(sess, mnist.train, lr=0.5, decay=0.00001, iter=100)
 
         print 'Training 4-layer random feedback net:'
-        rfn4.train(sess, mnist.train, lr=0.5, decay=0.0001, iter=1000)
-        '''
+        rfn4.train(sess, mnist.train, lr=0.5, decay=0.0001, iter=100)
 
         print 'Training 4-layer direct feedback net:'
-        dfb4.train(sess, mnist.train, lr=0.5, decay=0.0001, iter=1000)
+        dfb4.train(sess, mnist.train, lr=0.5, decay=0.0001, iter=100)

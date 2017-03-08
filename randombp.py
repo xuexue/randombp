@@ -136,17 +136,47 @@ class RandomFeedback4Layer(RandomFeedbackNet):
     """
     scope = 'rf4'
 
+    def layerwise_exp(self, sess, mnist, lr=0.5, decay=0.0, verbpose=False):
+        test_acc = []
+        stage = 1
+        for step in range(4):
+            n = 30
+            if step == 0: # stage 1: train w1 + w2
+                train_step = self.train_step[2:]
+                n = 30 * 3
+            elif step == 1: # stage 1: train only w3
+                train_step = self.train_step[:2]
+            elif step == 2: # stage 1: train w1 + w2
+                train_step = self.train_step[2:]
+            elif step == 3: # stage 1: train all
+                train_step = self.train_step
+
+            for iter in range(n):
+                images, labels = mnist.train.next_batch(1000)
+                sess.run(train_step,
+                        feed_dict={self.x: images,
+                                   self.y: labels,
+                                   self.lr: lr,
+                                   self.decay: decay
+                                   })
+                acc = sess.run(self.accuracy,
+                        feed_dict={self.x: mnist.test.images,
+                                   self.y: mnist.test.labels })
+                test_acc.append(acc)
+        return test_acc
+
+
     def define_network(self, num_hidden):
         with tf.variable_scope(self.scope):
             n1, n2 = num_hidden
             self.w1 = wi("w1", [784, n1]) # forward weights
             self.d1 = bi("d1", [n1])
             self.z1 = tf.matmul(self.x, self.w1) + self.d1
-            self.h1 = tf.nn.sigmoid(self.z1)
+            self.h1 = tf.nn.tanh(self.z1)
             self.w2 = wi("w2", [n1, n2]) # forward weights
             self.d2 = bi("d2", [n2])
             self.z2 = tf.matmul(self.h1, self.w2) + self.d2
-            self.h2 = tf.nn.sigmoid(self.z2)
+            self.h2 = tf.nn.tanh(self.z2)
             self.w3 = wi("w3", [n2, 10]) # forward weights
             self.d3 = bi("d3", [10])
             self.z3 = tf.matmul(self.h2, self.w3) + self.d3
@@ -184,10 +214,10 @@ class RandomFeedback4Layer(RandomFeedbackNet):
         # training: assign weights
         self.train_step= [
             tf.assign(self.w3, self.w3 - self.alpha * self.w3_grad - self.decay),
-            tf.assign(self.w2, self.w2 - self.alpha * self.w2_grad - self.decay),
-            tf.assign(self.w1, self.w1 - self.alpha * self.w1_grad - self.decay),
             tf.assign(self.d3, self.d3 - self.alpha * self.d3_grad - self.decay),
+            tf.assign(self.w2, self.w2 - self.alpha * self.w2_grad - self.decay),
             tf.assign(self.d2, self.d2 - self.alpha * self.d2_grad - self.decay),
+            tf.assign(self.w1, self.w1 - self.alpha * self.w1_grad - self.decay),
             tf.assign(self.d1, self.d1 - self.alpha * self.d1_grad - self.decay),
         ]
 
@@ -196,9 +226,24 @@ class BackProp4Layer(RandomFeedback4Layer):
     """A 4-layer network, as above
     """
     scope = 'bp4'
+    #def define_train_step(self, num_hidden):
+    #    self.train_step = tf.train.GradientDescentOptimizer(self.lr) \
+    #            .minimize(self.cross_entropy)
     def define_train_step(self, num_hidden):
-        self.train_step = tf.train.GradientDescentOptimizer(self.lr) \
-                .minimize(self.cross_entropy)
+        # training: assign weights
+        self.w3_grad, self.w2_grad, self.w1_grad, \
+                self.d3_grad, self.d2_grad, self.d1_grad = \
+                    tf.gradients(self.cross_entropy,
+                                 [self.w3, self.w2, self.w1,
+                                  self.d3, self.d2, self.d1])
+        self.train_step= [
+            tf.assign(self.w3, self.w3 - self.alpha * self.w3_grad - self.decay),
+            tf.assign(self.d3, self.d3 - self.alpha * self.d3_grad - self.decay),
+            tf.assign(self.w2, self.w2 - self.alpha * self.w2_grad - self.decay),
+            tf.assign(self.d2, self.d2 - self.alpha * self.d2_grad - self.decay),
+            tf.assign(self.w1, self.w1 - self.alpha * self.w1_grad - self.decay),
+            tf.assign(self.d1, self.d1 - self.alpha * self.d1_grad - self.decay),
+        ]
 
 
 class DirectFeedbackNet(RandomFeedback4Layer):
@@ -208,6 +253,8 @@ class DirectFeedbackNet(RandomFeedback4Layer):
     There are going to be some differences. I'll know later.
     """
     scope = 'dfn'
+    #def layerwise_exp(self, sess, mnist, lr=0.5, decay=0.0, verbpose=False):
+    #    super(DirectFeedbackNet, self).layerwise_exp(sess, mnist, lr=0.5, decay=0.0, verbpose=False):
 
     def define_train_step(self, num_hidden):
         with tf.variable_scope(self.scope):
@@ -241,10 +288,10 @@ class DirectFeedbackNet(RandomFeedback4Layer):
         # training: assign weights
         self.train_step= [
             tf.assign(self.w3, self.w3 - self.alpha * self.w3_grad - self.decay),
-            tf.assign(self.w2, self.w2 - self.alpha * self.w2_grad - self.decay),
-            tf.assign(self.w1, self.w1 - self.alpha * self.w1_grad - self.decay),
             tf.assign(self.d3, self.d3 - self.alpha * self.d3_grad - self.decay),
+            tf.assign(self.w2, self.w2 - self.alpha * self.w2_grad - self.decay),
             tf.assign(self.d2, self.d2 - self.alpha * self.d2_grad - self.decay),
+            tf.assign(self.w1, self.w1 - self.alpha * self.w1_grad - self.decay),
             tf.assign(self.d1, self.d1 - self.alpha * self.d1_grad - self.decay),
         ]
 

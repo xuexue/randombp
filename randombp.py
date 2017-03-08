@@ -191,6 +191,16 @@ class RandomFeedback4Layer(RandomFeedbackNet):
             tf.assign(self.d1, self.d1 - self.alpha * self.d1_grad - self.decay),
         ]
 
+
+class BackProp4Layer(RandomFeedback4Layer):
+    """A 4-layer network, as above
+    """
+    scope = 'bp4'
+    def define_train_step(self, num_hidden):
+        self.train_step = tf.train.GradientDescentOptimizer(self.lr) \
+                .minimize(self.cross_entropy)
+
+
 class DirectFeedbackNet(RandomFeedback4Layer):
     """Based on
         'Direct Feedback Alignment Provides Learning in

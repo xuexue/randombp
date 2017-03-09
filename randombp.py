@@ -14,14 +14,14 @@ def bi(name, shape, value=0.0, dtype=tf.float32):
           value, dtype=dtype))
 
 
-def wi(name, shape, dtype=tf.float32):
+def wi(name, shape, stddev=0.0, dtype=tf.float32):
     """Declares a weight variable with random normal initialization."""
     return tf.get_variable(
         name=name,
         shape=shape,
         dtype=dtype,
         initializer=tf.truncated_normal_initializer(
-            mean=0.0, stddev=0.2, dtype=dtype))
+            mean=0.0, stddev=stddev, dtype=dtype))
 
 
 class BackPropNet(object):
@@ -106,7 +106,7 @@ class RandomFeedbackNet(BackPropNet):
     def define_train_step(self, num_hidden):
         # define backward weights
         with tf.variable_scope(self.scope):
-            b2 = wi("b2", [10, num_hidden]) # backwards weights
+            b2 = wi("b2", [10, num_hidden], stddev=0.2) # backwards weights
         # training: derivative w.r.t. activations
         ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
         z2_grad = tf.gradients(self.cross_entropy, self.z2)[0] # with softmax inclued
@@ -186,8 +186,8 @@ class RandomFeedback4Layer(RandomFeedbackNet):
         # define backward weights
         with tf.variable_scope(self.scope):
             n1, n2 = num_hidden
-            b2 = wi("b2", [n2, n1]) # backwards weights
-            b3 = wi("b3", [10, n2]) # backwards weights
+            b2 = wi("b2", [n2, n1], stddev=0.2) # backwards weights
+            b3 = wi("b3", [10, n2], stddev=0.2) # backwards weights
         # training: derivative w.r.t. activations
         ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
         z3_grad = tf.gradients(self.cross_entropy, self.z3)[0] # softmax
@@ -259,8 +259,8 @@ class DirectFeedbackNet(RandomFeedback4Layer):
     def define_train_step(self, num_hidden):
         with tf.variable_scope(self.scope):
             n1, n2 = num_hidden
-            b2 = wi("b2", [10, n1]) # <--- SUBTLE DIFFERENCE
-            b3 = wi("b3", [10, n2])
+            b2 = wi("b2", [10, n1], stddev=0.2) # <--- SUBTLE DIFFERENCE
+            b3 = wi("b3", [10, n2], stddev=0.2)
         # training: derivative w.r.t. activations
         ypred_grad = tf.gradients(self.cross_entropy, self.ypred)[0]
         z3_grad = tf.gradients(self.cross_entropy, self.z3)[0]
